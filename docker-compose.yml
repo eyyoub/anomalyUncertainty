@@ -1,0 +1,204 @@
+version: '3.5'
+
+services:
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:6.2.0
+    environment:
+      - ZOOKEEPER_CLIENT_PORT=32181
+    ports:
+      - 32181:32181
+    networks:
+      - thesis
+
+  kafka:
+    image: confluentinc/cp-kafka:6.2.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    networks:
+      - thesis
+    ports:
+      - 9092:9092
+      - 30001:30001
+    environment:
+      KAFKA_CREATE_TOPICS: swat
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:32181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 100 
+
+  kafka_manager:
+    image: hlebalbau/kafka-manager:stable
+    ports:
+      - "9000:9000"
+    environment:
+      ZK_HOSTS: "zookeeper:32181"
+      APPLICATION_SECRET: "random-secret"
+    networks:
+      - thesis
+      
+  pyspark:
+    container_name: pyspark
+    image: docker.io/bitnami/spark:3
+    hostname: spark
+    build: ./spark
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    ports:
+        - 8080:8080
+    networks:
+        - thesis
+    volumes:
+        - ./spark:/sparkScripts:rw
+  
+  # cassandra_db:
+  #   image: cassandra:latest
+  #   container_name: cassandra
+  #   hostname: cassandra
+  #   ports:
+  #     - "9042:9042"
+  #   environment:
+  #     - MAX_HEAP_SIZE=512M
+  #     - HEAP_NEWSIZE=100M
+  #     - CASSANDRA_USERNAME=cassandra
+  #     - CASSANDRA_PASSWORD=cassandra
+  #   networks:
+  #     - thesis
+
+  influxdb:
+    container_name: influxdb
+    image: influxdb:2.4.0-alpine
+    restart: always
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    ports:
+      - 8086:8086
+    environment:
+      - INFLUXDB_DB=anomalyDetection
+      - INFLUXDB_USER_BUCKET=anomalyDetection
+      - INFLUXDB_ADMIN_USER=admin
+      - INFLUXDB_ADMIN_USER_PASSWORD=admin123
+    networks:
+      - thesis
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana-oss:9.1.8
+    ports:
+      - 3000:3000
+    restart: always
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - grafana-data:/var/lib/grafana
+      - ./grafana/plugin/cassandra:/var/lib/grafana/plugins/cassandra
+    environment:
+      - GF_SECURITY_ADMIN_USER=adimn
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=hadesarchitect-cassandra-datasource
+    depends_on:
+      - influxdb
+    networks:
+      - thesis
+
+  # telegraf:
+  #   container_name: telegraf
+  #   image: telegraf:latest
+  #   restart: always
+  #   volumes:
+  #     - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+  #   depends_on:
+  #     - influxdb
+  #   links:
+  #     - influxdb
+  #   ports:
+  #     - 8125:8125
+  #   networks:
+  #     - thesis
+  # chronograf:
+  #   image: chronograf:latest
+  #   container_name: chronograf
+  #   ports:
+  #     - 8888:8888
+  #   volumes:
+  #     - chronograf-storage:/var/lib/chronograf
+  #   depends_on:
+  #     - influxdb
+  #   environment:
+  #     - INFLUXDB_URL=http://influxdb:8086
+  #     - INFLUXDB_USERNAME=admin
+  #     - INFLUXDB_PASSWORD=admin123
+  #   networks:
+  #     - thesis
+
+  # schema-registry:
+  #   image: confluentinc/cp-schema-registry:7.4.0
+  #   hostname: schema-registry
+  #   container_name: schema-registry
+  #   depends_on:
+  #     - kafka
+  #   ports:
+  #     - "8081:8081"
+  #   environment:
+  #     SCHEMA_REGISTRY_HOST_NAME: schema-registry
+  #     SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'kafka:29092'
+  #     SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+  #   networks:
+  #     - thesis
+  #   healthcheck:
+  #     test: [ "CMD", "curl", "-f", "http://localhost:8081/" ]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+  # control-center:
+  #   image: confluentinc/cp-enterprise-control-center:7.4.0
+  #   hostname: control-center
+  #   container_name: control-center
+  #   depends_on:
+  #     - kafka
+  #     - schema-registry
+  #   ports:
+  #     - "9021:9021"
+  #   environment:
+  #     CONTROL_CENTER_BOOTSTRAP_SERVERS: 'kafka:29092'
+  #     CONTROL_CENTER_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
+  #     CONTROL_CENTER_REPLICATION_FACTOR: 1
+  #     CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
+  #     CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
+  #     CONFLUENT_METRICS_TOPIC_REPLICATION: 1
+  #     CONFLIENT_METRICS_ENABLE: 'false'
+  #     PORT: 9021
+  #   networks:
+  #     - thesis
+  #   healthcheck:
+  #     test: [ "CMD", "curl", "-f", "http://localhost:9021/health" ]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+
+
+networks:
+  thesis:
+    driver: bridge
+
+volumes:
+  grafana-data:
+  chronograf-storage:
+  influxdb-data:
+ 
+
+
+
+
+
+
+
+

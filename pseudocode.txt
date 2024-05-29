@@ -1,0 +1,56 @@
+    function IntiateSparkSession
+        initialize Spark session
+    end function
+
+    function ReadStream
+        Read data from kafka topic
+        return StreamData
+    end function
+
+    function SchemaMapping (Schema, StreamData)
+        define Schema Structure
+        parse Data From Json
+        map Column types
+        Convert Data to Spark DataFrame
+        return Spark_df
+    end function
+
+    function LoadModel(path)
+        return pretrainedModel
+    end function
+
+    function UncertaintyEstimation(model, inputs, n_samples)
+        Measure uncertainty 
+        return array(uncertainties)
+    end function
+
+    function AnomalyPrediction(spark_df, model)
+        predict anomalies
+        calculate uncertainty using UncertaintyEstimation function
+        return prediction and uncertainties in a dataframe 
+    end function
+
+    function WriteToInfluxDb(df, bucket, token, org)
+        save the model predictions alongside with its uncertainty score
+    end function
+
+
+    input: ICS data stream
+    output: uncertainty score, model prediction, update bucket and raise alert
+    initialize kafka data stream
+    initialize SparkSession for model inference
+    initialize InfluxDb Client and its variables for storage
+    model = LoadModel(path)
+procedure AnomalyDetectionPipeline
+    while true do
+        data = ReadStream()
+        spark_df = SchemaMapping(schema, data)
+        AnomalyPrediction(spark_df,model)
+            prepare model inputs
+            UncertaintyEstimation(model, inputs, n_samples)
+        return output
+        WriteToInfluxDb(output, bucket, token, org)
+        if uncertaintyScore > anomalyScore
+            raiseGrafanaAlertAndNotification
+            UpdateDashboard
+end procedure
